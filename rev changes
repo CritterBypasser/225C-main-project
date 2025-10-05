@@ -1,0 +1,106 @@
+
+# Executive summary — headline changes & their intent
+
+* **Memory evolution & reliability:** the module moved from LPDDR2 → DDR3L and later DDR3L variants were swapped to support larger density and (in rev-4) **ECC support**. Reason: capacity, availability and reliability/field robustness. ([Trenz Electronic][1])
+* **Power supply / DC-DC changes:** Trenz replaced obsolete DC-DC regulators (EN5311QI → MPM3834CGPA) to solve EOL and increase current capability; they also adjusted power-up sequencing for improved reliability. ([Mouser Electronics][2])
+* **Boot/config & tooling fixes:** added a **JTAG-only boot DIP switch** so customers can force JTAG boot when QSPI programming breaks with newer Vivado/tooling; renamed SPI boot signals to match AMD boot-mode conventions. These are practical fixes for toolchain/boot problems. ([Mouser Electronics][2])
+* **BOM / availability / manufacturability changes:** multiple parts were swapped for EOL or cost/availability reasons (ferrite beads, common-mode filters, LEDs, capacitors/resistors). Testpoint sizes and fiducials standardized for manufacturing/test. ([Mouser Electronics][2])
+* **Field/production housekeeping:** SPI flash device was replaced in 2025 (different part number and temperature grade); FTDI EEPROM content was updated in 2025 for Vivado / FTDI programming compatibility (identification / license key). These affect programming/production flows. ([Mouser Electronics][3])
+
+---
+
+# Chronological, source-backed breakdown (PCN → what changed → why → impact)
+
+### PCN-20210121 — *“TE0726-03 DDR3 Change and Product Update”* (issue date **2021-01-25**)
+
+* **What changed:** DDR3 RAM part number was changed (old → new), and a few clock device revisions and LED part swaps for availability/cost. ([Trenz Electronic][4])
+* **Why:** original DDR part reached EOL / availability issues; clock device revision improved long-term supply. ([Trenz Electronic][4])
+* **Impact for you:** *possible* small timing differences — Trenz flags “new DDR timings may be considered” (i.e., if you rely on extremely timing/latency-tight DDR behavior you should validate). Otherwise no board-level change needed if you use the module as a black box. ([Trenz Electronic][4])
+
+---
+
+### PCN-20230619 — *“TE0726-03 → TE0726-04 Hardware Revision Change”* (issue date **2023-10-04**) — **major revision** (this is the main rev3→rev4 PCN)
+
+This PCN is big — it lists ~20+ individual changes. I’ve grouped the important ones below:
+
+* **DC-DC regulator swap (U16, U17, U19, U20):** EN5311QI → MPM3834CGPA (reason: EOL). Result: increased current capability and minor electrical differences. **Action:** respect new power characteristics; don’t alter sequencing without re-validation. ([Mouser Electronics][2])
+* **DDR → ECC enablement:** DDR3 part changed to an ECC-capable device (IS43TR16256ECL...) and Trenz added I²C/ECC wiring, level shifters and buffers (R157/R158 options, U12, U24/U25). **Reason:** provide optional ECC for reliability. **Impact:** ECC is enabled in the module design path — firmware/boot images that assume the previous memory topology might need adaptation; ECC status lines are routed through local buffers/level shifters. If you rely on debugging DDR from the carrier, note the added ECC I²C dependency. ([Mouser Electronics][2])
+* **Power-up sequencing change:** updated power sequence to match the new DC-DCs and improve reliability. **Action:** carrier must not break expected sequencing — preserve rail bring-up constraints. ([Mouser Electronics][2])
+* **JTAG-only boot DIP (S1 / R152):** added to allow forcing JTAG boot because of QSPI programming problems with newer Vivado releases. This directly addresses Vivado/Quartus toolchain quirks (AR#00002 style). **Action:** include a JTAG/boot override on your carrier or replicate the same capability. ([Mouser Electronics][2])
+* **PUDC dual-use change and DONE level-translate:** resistor changes and diode added to allow PUDC to be dual-purpose and to fix DONE voltage level translation between CPLD and FPGA — small but important for robust boot behavior. ([Mouser Electronics][2])
+* **HDMI CEC removed / components DNP:** CEC circuit partly removed to improve HDMI behaviour; if you used CEC in firmware you’ll need to adjust. ([Mouser Electronics][2])
+* **MIC bias & audio-related small add:** added mic bias circuit to allow alternative microphones. ([Mouser Electronics][2])
+* **BOM optimizations / EOL substitutions:** changed common-mode filters (SP5001→EMI8042MUTAG), ferrite beads, capacitor and resistor value swaps, testpoint size standardization and new TP15–TP20 testpoints and standard fiducials for manufacturing. These are supply/manufacturing-driven changes and improve testability. ([Mouser Electronics][2])
+
+(Production note in the same PCN: rev-4 production started after old stock was used; see PCN for dates.) ([Mouser Electronics][2])
+
+---
+
+### PCN-20250203 — *“TE0726-04 SPI Flash change”* (issue date **2025-02-13**)
+
+* **What changed:** SPI flash U5 changed from `S25FL127SABMFV10` → `S25FL128LAGMFI013`. Reason: EOL of the original. Device ID and temperature grade changed (from −40..+105 °C → −40..+85 °C). Trenz says **no changes** required for their 2023.2 reference design, but the JEDEC/device ID changed. ([Mouser Electronics][3])
+* **Implication:** manufacturing/programming scripts which *identify* the flash by device ID or assume a specific temp grade should be checked. If you need extended temperature grade up to +105 °C, this matters — confirm the variant you select. ([Mouser Electronics][3])
+
+---
+
+### PCN-20250616 — *“TE0726-04 FTDI EEPROM update”* (issue date **2025-06-16**)
+
+* **What changed:** FTDI EEPROM contents (MISC1 / AMD licence key) updated to match FTDI programming conventions required by AMD tools (UG980 / Vivado Hardware Manager changes) so the programmer is identified properly (prefix `TE`). **Why:** new FTDI programming method in AMD tools (>= 2022.2). **Impact:** improves Vivado / Hardware Manager compatibility and device identification during JTAG. Affected modules: TE0726-04 with serial > 967172. ([Trenz Electronic][5])
+
+---
+
+# Key design decisions Trenz made (why they took them — short list)
+
+1. **Move away from smaller/older RAM types → DDR3L & ECC support** — availability, capacity and reliability for embedded Linux + PL workloads. ECC increases data integrity for long-running embedded systems. ([Trenz Electronic][4])
+2. **Swap DC-DCs and optimize BOM** — hardware vendors must react to component EOL; Trenz chose modern, slightly higher-cap regulators (improves current margin). They also standardized testpoints/fiducials to make assembly/testing easier. ([Mouser Electronics][2])
+3. **Tooling/boot practical fixes (JTAG switch, signal renaming)** — response to real user pain (QSPI programming with newer Vivado); making boot signals follow AMD naming reduces confusion and improves tool compatibility. ([Mouser Electronics][2])
+4. **Keep module as SoM & evolve module internals** — Trenz preferred to keep the module footprint and update internals rather than break the module-to-carrier interface; that preserves backwards compatibility of many carrier boards. ([Trenz Electronic][1])
+
+---
+
+# What you — as the carrier board (Zynq project) designer — must *absolutely* know & do
+
+(Short checklist with why each item matters; each point includes the source.)
+
+1. **Preserve expected power sequencing & rail behavior** — rev-4 uses new DC-DCs and an updated sequence. Don’t add circuits on the carrier that change the module rails’ rise times or interfere with POR/PUDC actions. *Why:* wrong sequencing bricks or prevents boot. ([Mouser Electronics][2])
+2. **Provide a JTAG-only boot path / DIP or jumper** — Trenz added S1 to fix Vivado QSPI programming problems; include equivalent on your carrier so you can recover with JTAG if QSPI access fails. *Why:* makes initial bring-up and reprogramming robust. ([Mouser Electronics][2])
+3. **If you depend on the module’s RAM behavior (timings / ECC), validate with the specific module batch** — PCNs changed DDR devices and enabled ECC; firmware may need updates. *Why:* DDR timing or ECC state can affect boot and memory tests. ([Trenz Electronic][4])
+4. **Boot-flash awareness:** the 2025 SPI flash swap changed device IDs and temp grade — confirm programming tools (flash-detect logic) and thermal requirements for your variant. *Why:* production programming and thermal spec differences. ([Mouser Electronics][3])
+5. **FTDI / programmer identification:** if you rely on Vivado Hardware Manager / FTDI programmers, make sure your toolchain supports the updated FTDI EEPROM method (post-2022 tools); Trenz updated EEPROM content for this. *Why:* programming/ID compatibility. ([Trenz Electronic][5])
+6. **Keep testpoints & standard fiducials** — rev-4 standardized and added testpoints; mirror this in your carrier for easier manufacturing. *Why:* assembly and debug efficiency. ([Mouser Electronics][2])
+7. **If you plan to remove HDMI/DSI/CSI or other rev-4 features, check for shared clocks / signals** — Trenz removed HDMI CEC and marked some parts DNP; ensure you don’t remove globally shared oscillators or clocks used by the PS. *Why:* shared resources can quietly break other functions. ([Mouser Electronics][2])
+8. **Document and track module serial / revision numbers in BOM/test records** — PCN-targeting may be serial-range dependent (FTDI PCN lists serial > 967172). *Why:* to know which PCNs affect which boards in production. ([Trenz Electronic][5])
+
+---
+
+# Production / supply items you should track
+
+* **Serial number ranges** (for PCN applicability; e.g., FTDI EEPROM update applies to TE0726-04 serials > 967172). ([Trenz Electronic][5])
+* **SPI flash temp rating change** (−40..+105 → −40..+85 °C) in PCN-20250203 — important if you target industrial-temperature deployments. ([Mouser Electronics][3])
+* **DDR timing / part swaps** (PCN-20210121 and PCN-20230619) — if your firmware makes timing assumptions, re-test. ([Trenz Electronic][4])
+
+---
+
+# Short list of “gotchas” (things people trip on)
+
+* **QSPI programming failures with Vivado** — Trenz explicitly added a JTAG-only switch to address this. If you skip that, you may get stuck flashing images on some tool versions. ([Mouser Electronics][2])
+* **Device ID / temperature change in SPI flash** — some automated programming/CI scripts detect flash by JEDEC ID; the swap will show a new ID. ([Mouser Electronics][3])
+* **ECC wiring & I²C connection** — rev-4 wires ECC EEPROM I²C onto available I²C bus via a level shifter — verify whether your carrier drives that same bus or if you need to avoid bus contention. ([Mouser Electronics][2])
+
+---
+
+# Where these authoritative details live (primary sources I used)
+
+* TE0726 TRM (rev-4 PDF / TRM v.56, 2024). ([Trenz Electronic][1])
+* PCN-20230619 TE0726-03 → TE0726-04 Hardware Revision Change (2023-10-04) — full list of rev-4 hardware fixes / EOL substitutions / ECC additions / JTAG DIP switch / testpoint changes. ([Mouser Electronics][2])
+* PCN-20210121 TE0726-03 DDR3 change (2021-01-25). ([Trenz Electronic][4])
+* PCN-20250203 TE0726-04 SPI flash change (2025-02-13). ([Mouser Electronics][3])
+* PCN-20250616 TE0726-04 FTDI EEPROM update (2025-06-16). ([Trenz Electronic][5])
+
+---
+
+[1]: https://www.trenz-electronic.de/trenzdownloads/Trenz_Electronic/Modules_and_Module_Carriers/special/TE0726/REV04/Documents/TRM-TE0726-04.pdf "TRM-TE0726 TRM-v.56 -08/27/2024"
+[2]: https://www.mouser.com/PCN/Trenz_Electronic_PCN_20230619_TE0726_03_to_TE0726_04_Hardware_Revision_Change.pdf?srsltid=AfmBOopU44mY148ij2-_AR3DmMxlR4ZJ454bzL2qCa3GAEh5W3Hy8nPT "PCN-PCN-20230619 TE0726-03 to TE0726-04 Hardware Revision Change+11+10/04/2023"
+[3]: https://www.mouser.com/PCN/Trenz_Electronic_PCN_20250203_TE0726_04_SPI_Flash_Change.pdf?srsltid=AfmBOoqEpenWlOq6lntk6GmAgvaEknlioYlUiYVvv9x1CZOLVphbTLqb "PCN-PCN-20250203 TE0726-04 SPI Flash Change+5+02/13/2025"
+[4]: https://www.trenz-electronic.de/trenzdownloads/Trenz_Electronic/Modules_and_Module_Carriers/special/TE0726/PCN/PCN-20210121%20TE0726-03%20DDR3%20Change%20and%20Product%20Update-v9-02_16_2021.pdf "PCN-PCN-20210121 TE0726-03 DDR3 Change and Product Update+9+02/16/2021"
+[5]: https://www.trenz-electronic.de/trenzdownloads/Trenz_Electronic/Modules_and_Module_Carriers/special/TE0726/PCN/PCN-20250616%20TE0726-04%20FTDI%20EEPROM%20Update.pdf "PCN-PCN-20250616 TE0726-04 FTDI EEPROM Update+3+06/16/2025"
